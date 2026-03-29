@@ -61,5 +61,3 @@ def init_db():
             )
             conn.commit()
             print(f"[DB] Seeded 60 days of history for '{PRODUCT_NAME}'.")
-if __name__ == "__main__":
-    init_db()
