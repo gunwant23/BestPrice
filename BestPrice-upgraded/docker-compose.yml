@@ -1,0 +1,70 @@
+version: "3.9"
+
+services:
+  # ── Main Streamlit app ────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: bestprice:latest
+    container_name: bestprice_app
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    volumes:
+      - bestprice_data:/app/data
+    environment:
+      - BESTPRICE_DB_PATH=/app/data/database.db
+      - BESTPRICE_PRODUCT=${BESTPRICE_PRODUCT:-samsung-m34}
+      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM:-}
+      - ALERT_EMAIL_TO=${ALERT_EMAIL_TO:-}
+      - ALERT_SMTP_PASSWORD=${ALERT_SMTP_PASSWORD:-}
+      - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL:-}
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - bestprice_net
+
+  # ── Daily price updater (cron-like) ───────────────────────────────────────
+  updater:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: bestprice:latest
+    container_name: bestprice_updater
+    restart: unless-stopped
+    volumes:
+      - bestprice_data:/app/data
+    environment:
+      - BESTPRICE_DB_PATH=/app/data/database.db
+      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM:-}
+      - ALERT_EMAIL_TO=${ALERT_EMAIL_TO:-}
+      - ALERT_SMTP_PASSWORD=${ALERT_SMTP_PASSWORD:-}
+      - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL:-}
+    # Run update_price.py --all every 24 h
+    entrypoint: >
+      sh -c "while true; do
+        python update_price.py --all;
+        echo 'Sleeping 24h...';
+        sleep 86400;
+      done"
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - bestprice_net
+
+volumes:
+  bestprice_data:
+    driver: local
+
+networks:
+  bestprice_net:
+    driver: bridge
